@@ -16,11 +16,17 @@ export default defineConfig({
         '/api': {
           target: 'http://localhost:5078',
           changeOrigin: true,
+        },
+        '/TestResults': {
+          target: 'http://localhost:5078',
+          changeOrigin: true
         }
       },
         port: 5783,
     },
     build: {
         target: 'esnext',
+        outDir: '../server/dist',
+        emptyOutDir: true,
     },
 });

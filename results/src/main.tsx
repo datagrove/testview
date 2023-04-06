@@ -27,7 +27,7 @@ export const A2: Component<{ children: JSXElement, href: string }> = (props) => 
 const url = new URL(location.href);
 const hostRoot = `${url.protocol}//${url.hostname}:${url.port}`
 
-async function fetchExists(url: string)  {
+async function fetchExists(url: string) {
     const res = await fetch(url,
         { method: "HEAD" }
     )
@@ -35,7 +35,9 @@ async function fetchExists(url: string)  {
 }
 async function fetchDefault(url: string, def: string) {
     try {
-        return await (await fetch(url)).text();
+        const f = await fetch(url)
+        if (f.status == 404) return def
+        return await f.text();
     } catch (e) {
         return def
     }
@@ -52,7 +54,7 @@ const TestView: Component = (props) => {
         // log and source are always there, stack is optional. trace is optional
         setTrace(await fetchExists(f + ".zip"))
         setLog(await (await fetch(f + ".txt")).text());
-        setStack(await fetchDefault(f + ".error.txt", ''));
+        setStack(await fetchDefault(f + ".error", ''));
         // format the code
         var src = await (await fetch(f + ".feature")).text()
         var x = hljs.highlight(src, {
@@ -64,7 +66,7 @@ const TestView: Component = (props) => {
     return <><BackNav back={true}>{p.id}</BackNav>
         <div class='m-2'>
             <Show when={trace()}>
-                <p><A2 href={'/traceViewer/index.html?trace=' + hostRoot  + f + '.zip'}>View Trace</A2></p><p> <A2 href={f + '.zip'}>Download Trace</A2></p></Show>
+                <p><A2 href={'/traceViewer/index.html?trace=' + hostRoot + f + '.zip'}>View Trace</A2></p><p> <A2 href={f + '.zip'}>Download Trace</A2></p></Show>
             <Show when={stack()}>
                 <PreCard>{stack()}</PreCard>
             </Show>
@@ -79,7 +81,7 @@ const TestView: Component = (props) => {
     </>
 }
 // One  set of test results.
-const TestList: Component<{ test: string[], color: string, run: string }> = (props) => {
+const TestList: Component<{ test: string[], color: string, run: string, waiting?: boolean }> = (props) => {
     const navigate = useNavigate()
     return <>
         <div class='pl-2 pr-2 mt-2 overflow-hidden'>
@@ -95,13 +97,16 @@ const TestList: Component<{ test: string[], color: string, run: string }> = (pro
                     <tbody>
                         <For each={props.test}>{(e, i) => {
                             const x = '/test/' + props.run + "/" + e;
-                            return <tr onClick={() => navigate(x)} class="cursor-pointer bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            return <><Show when={!props.waiting}><tr onClick={() => navigate(x)} class="cursor-pointer bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                 <td class="px-6 py-4 font-medium text-gray-900  dark:text-white">
                                     <A class={`${props.color} whitespace-nowrap`} href={x}>{e}</A>
-
-
                                 </td>
-                            </tr>
+                            </tr></Show>
+                                <Show when={props.waiting}><tr class="cursor-pointer bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                    <td class="px-6 py-4 font-medium text-gray-900  dark:text-white">
+                                        {e}
+                                    </td>
+                                </tr></Show></>
                         }}</For>
                     </tbody>
                 </table>
@@ -114,12 +119,12 @@ const RunResults: Component<{}> = (props) => {
     const [waiting, setWaiting] = createSignal<string[]>([])
     const id = useParams().id
     onMount(async () => {
-        const run = await (await fetch('/api/run/'+id)).json()
+        const run = await (await fetch('/api/run/' + id)).json()
         const x = Array.from(Object.entries(run)) as [string, string][]
 
-        setPassed(x.filter(e => e[1]=="pass").map(e => e[0]))
-        setFailed(x.filter(e => e[1]=="fail").map(e => e[0]))
-        setWaiting(x.filter(e => e[1]=="waiting").map(e => e[0]))
+        setPassed(x.filter(e => e[1] == "pass").map(e => e[0]))
+        setFailed(x.filter(e => e[1] == "fail").map(e => e[0]))
+        setWaiting(x.filter(e => e[1] == "waiting").map(e => e[0]))
     })
 
 
@@ -132,7 +137,7 @@ const RunResults: Component<{}> = (props) => {
         <a id='passed'><H2>Passed</H2></a>
         <TestList color='' test={passed()} run={id} />
         <a id='waiting'><H2>Waiting</H2></a>
-        <TestList color='' test={waiting()} run={id} />
+        <TestList color='' test={waiting()} waiting={true} run={id} />
     </>
 }
 
