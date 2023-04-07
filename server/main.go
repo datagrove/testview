@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -48,26 +47,19 @@ func main() {
 			launch()
 		}}
 
-	rootCmd.PersistentFlags().StringVar(&config.Http, "http", ":5078", "http address")
-	rootCmd.PersistentFlags().StringVar(&config.Sftp, "sftp", ":5079", "sftp address")
+	rootCmd.PersistentFlags().StringVar(&config.Http, "http", "localhost:5078", "http address")
+	rootCmd.PersistentFlags().StringVar(&config.Sftp, "sftp", "localhost:5079", "sftp address")
 	rootCmd.PersistentFlags().StringVar(&config.Store, "store", "TestResults", "test result store")
 	rootCmd.Execute()
 }
 
 // SftpHandler handler for SFTP subsystem
 func SftpHandlerx(sess ssh.Session) {
-	debugStream := ioutil.Discard
-	serverOptions := []sftp.ServerOption{
-		sftp.WithDebug(debugStream),
+	serverOptions := []sftp.RequestServerOption{
+		//sftp.WithDebug(debugStream),
+		//sftp.WithStartDirectory(config.Store),
 	}
-	server, err := sftp.NewServer(
-		sess,
-		serverOptions...,
-	)
-	if err != nil {
-		log.Printf("sftp server init error: %s\n", err)
-		return
-	}
+	server := sftp.NewRequestServer(sess, InMemHandler(), serverOptions...)
 
 	if err := server.Serve(); err == io.EOF {
 		server.Close()
@@ -79,11 +71,13 @@ func SftpHandlerx(sess ssh.Session) {
 
 func launch() {
 	go func() {
-
 		ssh_server := ssh.Server{
 			Addr: config.Sftp,
 			PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
 				return true
+			},
+			Handler: func(s ssh.Session) {
+				io.WriteString(s, "Please use sftp\n")
 			},
 			SubsystemHandlers: map[string]ssh.SubsystemHandler{
 				"sftp": SftpHandlerx,
