@@ -1,9 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"embed"
 	_ "embed"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,13 +30,17 @@ var (
 	res embed.FS
 )
 
-var config TestValue = TestValue{
-	Http:  "localhost:5078",
-	Sftp:  "localhost:5079",
-	Store: "TestResults",
-}
+var config TestValue
 
 func main() {
+	h, _ := os.UserHomeDir()
+	config = TestValue{
+		Http:  "localhost:5078",
+		Sftp:  "localhost:5079",
+		Store: "TestResults",
+		Key:   path.Join(h, ".ssh", "id_rsa"),
+	}
+
 	rootCmd := &cobra.Command{
 		Use: "testview ",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -71,12 +79,18 @@ func SftpHandlerx(sess ssh.Session) {
 
 func launch() {
 	go func() {
+
 		ssh_server := ssh.Server{
 			Addr: config.Sftp,
+			PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
+				return true
+			},
 			SubsystemHandlers: map[string]ssh.SubsystemHandler{
 				"sftp": SftpHandlerx,
 			},
 		}
+		kf := ssh.HostKeyFile(config.Key)
+		kf(&ssh_server)
 		log.Fatal(ssh_server.ListenAndServe())
 	}()
 
@@ -160,7 +174,37 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 
 type TestValue struct {
+	Key   string `json:"key,omitempty"`
 	Http  string `json:"http,omitempty"`
 	Sftp  string `json:"sftp,omitempty"`
 	Store string `json:"test_root,omitempty"`
+}
+
+// Generates a private key that will be used by the SFTP server.
+func generatePrivateKey(BasePath string) error {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(path.Join(BasePath, ".sftp"), 0755); err != nil {
+		return err
+	}
+
+	o, err := os.OpenFile(path.Join(BasePath, ".sftp/id_rsa"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer o.Close()
+
+	pkey := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}
+
+	if err := pem.Encode(o, pkey); err != nil {
+		return err
+	}
+
+	return nil
 }
